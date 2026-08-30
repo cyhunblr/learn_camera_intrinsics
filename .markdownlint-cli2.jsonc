@@ -1,0 +1,30 @@
+// markdownlint configuration. Run it with ./scripts/check_markdown.sh; CI runs
+// the same script. Rules are only switched off where this repository has a
+// deliberate reason, and the reason is written down.
+{
+  "globs": ["**/*.md"],
+  "ignores": [
+    ".venv/**",
+    "node_modules/**",
+    "cpp/build/**"
+  ],
+  "config": {
+    "default": true,
+
+    // Prose is wrapped at 80, which is the repository's own convention and is
+    // enforced here. Tables and code blocks are exempt: a table column cannot
+    // be wrapped without breaking it, and a shell command split across lines
+    // is a shell command that no longer copy-pastes. KaTeX $$...$$ blocks are
+    // exempted where they occur, with an inline directive, so the exemption is
+    // visible next to the formula it applies to.
+    "MD013": {
+      "line_length": 80,
+      "tables": false,
+      "code_blocks": false
+    },
+
+    // <details>/<summary> is the only way to fold an answer on GitHub, and the
+    // quiz is built on it. Nothing else may be raw HTML.
+    "MD033": { "allowed_elements": ["details", "summary"] }
+  }
+}

@@ -1,0 +1,42 @@
+# Publish the viewer to GitHub Pages, so students get a link instead of a clone.
+#
+# Pages must be switched on once, by a human, before this can run:
+#
+#   Settings -> Pages -> Build and deployment -> Source: GitHub Actions
+#
+# GITHUB_TOKEN cannot do it for you. actions/configure-pages has an
+# `enablement: true` option, but creating a Pages site needs repository-admin
+# rights the workflow token does not have, so it fails with "Resource not
+# accessible by integration". Until someone clicks that setting, this workflow
+# fails on its first step; afterwards it just works.
+name: Deploy viewer
+
+on:
+  push:
+    branches: [main]
+    paths: ["web/**", ".github/workflows/pages.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: web
+      - id: deploy
+        uses: actions/deploy-pages@v4

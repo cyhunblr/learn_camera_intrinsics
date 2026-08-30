@@ -1,0 +1,95 @@
+# The whole repository is headless, so everything below runs in CI unchanged.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync
+      - name: Exercise solutions
+        run: uv run pytest -q
+      - name: Every example runs
+        run: |
+          for f in python/examples/*.py; do echo "--- $f"; uv run "$f" > /dev/null; done
+      - name: Figures regenerate
+        run: ./scripts/generate_figures.sh
+
+  commits:
+    # Conventional Commits, checked with commitlint itself rather than a
+    # third-party action, so what runs here is visible in this file.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+      - run: npm install --no-save @commitlint/cli @commitlint/config-conventional
+      - name: Lint commit messages
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          BEFORE: ${{ github.event.before }}
+          HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          zero=0000000000000000000000000000000000000000
+          if [ -n "$BASE" ]; then
+            from="$BASE"                      # a pull request: its whole range
+          elif [ -n "$BEFORE" ] && [ "$BEFORE" != "$zero" ] \
+               && git cat-file -e "$BEFORE" 2>/dev/null; then
+            from="$BEFORE"                    # a push: everything it carried
+          elif git rev-parse --verify -q "$HEAD^" >/dev/null; then
+            from="$HEAD~1"                    # a new branch: the tip only
+          else
+            from=""                           # a root commit: nothing precedes it
+          fi
+          if [ -n "$from" ]; then
+            npx commitlint --from "$from" --to "$HEAD" --verbose
+          else
+            # No range exists for a root commit, so check the message itself.
+            git log -1 --format=%B "$HEAD" | npx commitlint --verbose
+          fi
+
+  markdown:
+    # The docs are the product here, so they are linted like the code.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+      - name: Lint Markdown
+        run: ./scripts/check_markdown.sh
+
+  parity:
+    # The README claims the three ports agree. This is what makes that a fact.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+      - run: sudo apt-get update && sudo apt-get install -y libopencv-dev cmake g++
+      - run: uv sync
+      - run: cmake -S cpp -B cpp/build -DCMAKE_BUILD_TYPE=Release && cmake --build cpp/build -j
+      - run: ./scripts/check_parity.sh
+
+  cpp:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y libopencv-dev cmake g++
+      - run: cmake -S cpp -B cpp/build -DCMAKE_BUILD_TYPE=Release
+      - run: cmake --build cpp/build -j
+      - run: ctest --test-dir cpp/build --output-on-failure
+      - name: Every example runs
+        run: for f in cpp/build/bin/0*; do echo "--- $f"; "$f" > /dev/null; done
+      - name: Figure renderers run
+        run: |
+          cpp/build/bin/render_2d --out /tmp/fig2.png
+          cpp/build/bin/render_3d --out /tmp/fig3.png

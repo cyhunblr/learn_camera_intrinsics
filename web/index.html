@@ -1,0 +1,1568 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Intrinsics Bench</title>
+<meta name="description" content="An optical bench for the camera intrinsic matrix K and the distortion vector D.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* ---------------------------------------------------------------------------
+   Palette: the bloom of an anti-reflective lens coating -- violet and amber on
+   a blue-biased charcoal. The viewport carries the colour; the chrome stays
+   quiet so it never competes with what is being measured.
+   Dark is the default look (an instrument), with a full light theme behind
+   both prefers-color-scheme and an explicit data-theme stamp.
+--------------------------------------------------------------------------- */
+:root {
+  --ground:      #0d0e14;
+  --surface:     #14161f;
+  --surface-2:   #1b1e2a;
+  --line:        #262a39;
+  --line-soft:   #1e2130;
+  --ink:         #e8e7f0;
+  --ink-2:       #a5a3b8;
+  --ink-3:       #6f6d84;
+  --accent:      #9b7be8;
+  --accent-soft: #6d55a6;
+  --accent-2:    #e0a94b;
+  --ok:          #56c48a;
+  --warn:        #e8a33d;
+  --bad:         #e8695b;
+  --viewport:    #101119;
+  --bezel:       #2b2f40;
+  --focus:       #b79bf0;
+  --shadow:      0 1px 2px rgba(0,0,0,.5), 0 8px 24px rgba(0,0,0,.35);
+  --track:       #2a2e3d;
+
+  --f-display: "IBM Plex Sans Condensed", "IBM Plex Sans", system-ui, sans-serif;
+  --f-body:    "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+  --f-mono:    "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --rail-w: 310px;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --ground:      #f2f1f5;
+    --surface:     #ffffff;
+    --surface-2:   #f7f6fa;
+    --line:        #dedce6;
+    --line-soft:   #e9e7ef;
+    --ink:         #1b1a24;
+    --ink-2:       #56546a;
+    --ink-3:       #8a8799;
+    --accent:      #6b4bbd;
+    --accent-soft: #a58fdd;
+    --accent-2:    #a97316;
+    --ok:          #2f8f5f;
+    --warn:        #9a6b12;
+    --bad:         #c04437;
+    --viewport:    #101119;
+    --bezel:       #cfccdb;
+    --focus:       #6b4bbd;
+    --shadow:      0 1px 2px rgba(20,16,40,.06), 0 8px 24px rgba(20,16,40,.08);
+    --track:       #dddae6;
+  }
+}
+:root[data-theme="light"] {
+  --ground:      #f2f1f5;
+  --surface:     #ffffff;
+  --surface-2:   #f7f6fa;
+  --line:        #dedce6;
+  --line-soft:   #e9e7ef;
+  --ink:         #1b1a24;
+  --ink-2:       #56546a;
+  --ink-3:       #8a8799;
+  --accent:      #6b4bbd;
+  --accent-soft: #a58fdd;
+  --accent-2:    #a97316;
+  --ok:          #2f8f5f;
+  --warn:        #9a6b12;
+  --bad:         #c04437;
+  --viewport:    #101119;
+  --bezel:       #cfccdb;
+  --focus:       #6b4bbd;
+  --shadow:      0 1px 2px rgba(20,16,40,.06), 0 8px 24px rgba(20,16,40,.08);
+  --track:       #dddae6;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--f-body);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 3px; }
+
+.app { display: flex; flex-direction: column; height: 100vh; min-height: 560px; }
+
+/* --- top bar ------------------------------------------------------------ */
+.topbar {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 10px 18px;
+  padding: 8px 18px; min-height: 52px; flex: none;
+  background: var(--surface); border-bottom: 1px solid var(--line);
+}
+.brand { display: flex; align-items: baseline; gap: 10px; margin-right: 4px; }
+.brand h1 {
+  font-family: var(--f-display); font-weight: 600; font-size: 17px;
+  letter-spacing: .01em; margin: 0; white-space: nowrap;
+}
+.brand .sub {
+  font-family: var(--f-mono); font-size: 11px; color: var(--ink-3);
+  letter-spacing: .04em; white-space: nowrap;
+}
+.tabs { display: flex; gap: 2px; background: var(--surface-2); padding: 3px; border-radius: 7px; border: 1px solid var(--line-soft); }
+.tab {
+  white-space: nowrap;
+  font-family: var(--f-display); font-size: 12.5px; font-weight: 600;
+  letter-spacing: .06em; text-transform: uppercase;
+  padding: 5px 13px; border: 0; border-radius: 5px; cursor: pointer;
+  background: transparent; color: var(--ink-3);
+}
+.tab:hover { color: var(--ink-2); }
+.tab[aria-selected="true"] { background: var(--accent); color: #fff; }
+.spacer { flex: 1; }
+.topbar label.field { display: flex; align-items: center; gap: 8px; }
+.topbar .flabel {
+  font-family: var(--f-display); font-size: 11px; font-weight: 600;
+  letter-spacing: .09em; text-transform: uppercase; color: var(--ink-3);
+}
+select {
+  font-family: var(--f-body); font-size: 13px; color: var(--ink);
+  background: var(--surface-2); border: 1px solid var(--line);
+  border-radius: 6px; padding: 5px 9px; cursor: pointer;
+}
+.iconbtn {
+  display: grid; place-items: center; width: 32px; height: 32px;
+  border: 1px solid var(--line); border-radius: 6px; cursor: pointer;
+  background: var(--surface-2); color: var(--ink-2); font-size: 14px; padding: 0;
+}
+.iconbtn:hover { color: var(--ink); border-color: var(--accent-soft); }
+
+/* --- body split --------------------------------------------------------- */
+.body { flex: 1; display: flex; min-height: 0; }
+
+/* --- control rail ------------------------------------------------------- */
+.rail {
+  width: var(--rail-w); flex: none; overflow-y: auto;
+  background: var(--surface); border-right: 1px solid var(--line);
+  padding: 4px 0 20px;
+}
+.group { border-bottom: 1px solid var(--line-soft); padding: 8px 16px 10px; }
+.group:last-child { border-bottom: 0; }
+.ghead {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  margin-bottom: 8px; width: 100%; padding: 2px 0; cursor: pointer;
+  background: none; border: 0; text-align: left; color: inherit;
+}
+.ghead .caret {
+  flex: none; width: 9px; height: 9px; margin-right: 2px; color: var(--ink-3);
+  transform: rotate(90deg); transform-origin: 50% 50%;
+}
+.group[data-open="0"] .ghead { margin-bottom: 0; }
+.group[data-open="0"] .ghead .caret { transform: rotate(0deg); }
+.group[data-open="0"] .gbody { display: none; }
+.ghead h2 { flex: 1; }
+.ghead h2 {
+  font-family: var(--f-display); font-size: 11px; font-weight: 600; margin: 0;
+  letter-spacing: .13em; text-transform: uppercase; color: var(--ink-3);
+  white-space: nowrap;
+}
+/* The note is a hint, not a heading: it gives way rather than wrapping the
+   title onto a second line. */
+.gnote {
+  font-family: var(--f-mono); font-size: 10.5px; color: var(--ink-3);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;
+}
+
+/* One control row on ONE line: symbol, track, value, unit. The two-line
+   version needed 1065px of rail, which no common laptop gives us -- half the
+   controls sat below the fold. The long name lives in the row's title. */
+.ctl { display: flex; align-items: center; gap: 8px; height: 26px; }
+.ctl .name {
+  font-family: var(--f-mono); font-size: 12px; font-weight: 500; color: var(--ink-2);
+  letter-spacing: .02em; width: 3.2ch; flex: none;
+}
+.ctl .val {
+  flex: none;
+  font-family: var(--f-mono); font-size: 12.5px; font-weight: 500;
+  font-variant-numeric: tabular-nums; color: var(--ink);
+  background: transparent; border: 1px solid transparent; border-radius: 4px;
+  padding: 0 3px; width: 8.5ch; text-align: right;
+}
+.ctl .val:hover { border-color: var(--line); }
+.ctl .val:focus { border-color: var(--accent); background: var(--surface-2); outline: none; }
+.ctl .unit { font-family: var(--f-mono); font-size: 10.5px; color: var(--ink-3); width: 2ch; flex: none; }
+
+.trackwrap { position: relative; height: 16px; flex: 1; min-width: 0; display: flex; align-items: center; }
+.tick { position: absolute; top: 3px; width: 1px; height: 10px; background: var(--ink-3); opacity: .5; pointer-events: none; }
+input[type=range] {
+  -webkit-appearance: none; appearance: none; width: 100%; height: 16px;
+  background: transparent; margin: 0; cursor: ew-resize;
+}
+input[type=range]::-webkit-slider-runnable-track { height: 3px; border-radius: 2px; background: var(--track); }
+input[type=range]::-moz-range-track { height: 3px; border-radius: 2px; background: var(--track); }
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 13px; height: 13px; border-radius: 50%;
+  background: var(--accent); border: 2px solid var(--surface); margin-top: -5px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.4);
+}
+input[type=range]::-moz-range-thumb {
+  width: 13px; height: 13px; border-radius: 50%; background: var(--accent);
+  border: 2px solid var(--surface); box-shadow: 0 1px 3px rgba(0,0,0,.4);
+}
+input[type=range]:hover::-webkit-slider-thumb { background: var(--focus); }
+input[type=range]:hover::-moz-range-thumb { background: var(--focus); }
+
+.seg { display: flex; gap: 2px; background: var(--surface-2); border: 1px solid var(--line-soft); border-radius: 6px; padding: 2px; }
+.seg button {
+  flex: 1; font-family: var(--f-body); font-size: 12px; padding: 4px 2px;
+  border: 0; border-radius: 4px; background: transparent; color: var(--ink-3); cursor: pointer;
+}
+.seg button:hover { color: var(--ink-2); }
+.seg button[aria-pressed="true"] { background: var(--accent); color: #fff; }
+
+.toggles { display: flex; flex-wrap: wrap; gap: 6px; }
+.tg {
+  display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+  font-family: var(--f-mono); font-size: 11.5px; color: var(--ink-2);
+  border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px 3px 8px;
+  background: var(--surface-2); user-select: none;
+}
+.tg input { position: absolute; opacity: 0; width: 0; height: 0; }
+.tg .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ink-3); flex: none; }
+.tg:has(input:checked) { color: var(--ink); border-color: var(--accent-soft); }
+.tg:has(input:checked) .dot { background: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
+.tg:has(input:focus-visible) { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+.btnrow { display: flex; gap: 6px; }
+.btn {
+  flex: 1; white-space: nowrap;
+  font-family: var(--f-body); font-size: 12.5px; padding: 5px 8px;
+  border: 1px solid var(--line); border-radius: 6px; background: var(--surface-2);
+  color: var(--ink-2); cursor: pointer;
+}
+.btn:hover { color: var(--ink); border-color: var(--accent-soft); }
+
+/* --- stage -------------------------------------------------------------- */
+.stage { flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 14px; gap: 12px; overflow: auto; }
+.panes { display: flex; gap: 12px; flex: 3 1 0; min-height: 0; }
+.panes.two > .pane { flex: 1 1 0; }
+#panes-3d .pane.sensor { flex: 0 0 auto; min-width: 220px; }
+#panes-3d .pane.sensor .cap { white-space: nowrap; overflow: hidden; }
+.pane { display: flex; flex-direction: column; min-width: 0; min-height: 220px; }
+.pane .cap {
+  display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; min-height: 18px;
+}
+.pane .cap b {
+  font-family: var(--f-display); font-size: 11.5px; font-weight: 600;
+  letter-spacing: .1em; text-transform: uppercase; color: var(--ink-2);
+}
+.pane .cap span { font-family: var(--f-mono); font-size: 10.5px; color: var(--ink-3); }
+.frame {
+  flex: 1; position: relative; border: 1px solid var(--bezel); border-radius: 8px;
+  background: var(--viewport); overflow: hidden; box-shadow: var(--shadow); min-height: 0;
+}
+.frame canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+.frame.grab canvas { cursor: grab; }
+.frame.grab canvas:active { cursor: grabbing; }
+.hint {
+  position: absolute; left: 10px; bottom: 8px; font-family: var(--f-mono);
+  font-size: 10.5px; color: #6f6d84; pointer-events: none; letter-spacing: .02em;
+}
+#panes-2d { flex: none; }
+#panes-2d .pane { flex: 1 1 0; min-width: 0; }
+#panes-2d .frame { aspect-ratio: 4 / 3; flex: none; }
+.row2 { display: flex; gap: 12px; flex: 1 1 150px; min-height: 150px; }
+.row2 .pane { flex: 1 1 0; min-height: 0; }
+
+/* --- status bar --------------------------------------------------------- */
+.status {
+  flex: none; display: flex; align-items: stretch; gap: 0;
+  background: var(--surface); border-top: 1px solid var(--line);
+  overflow-x: auto;
+}
+.cell { padding: 9px 18px; border-right: 1px solid var(--line-soft); display: flex; flex-direction: column; gap: 3px; justify-content: center; }
+.cell:last-child { border-right: 0; }
+.cell .k {
+  font-family: var(--f-display); font-size: 10px; font-weight: 600;
+  letter-spacing: .13em; text-transform: uppercase; color: var(--ink-3); white-space: nowrap;
+}
+.cell .v { font-family: var(--f-mono); font-size: 12.5px; font-variant-numeric: tabular-nums; color: var(--ink); white-space: nowrap; }
+
+/* the K matrix, set as an actual matrix -- the subject's own notation */
+.kmat { display: flex; align-items: stretch; gap: 7px; }
+.kmat .br { width: 6px; border: 1.5px solid var(--ink-3); border-right: 0; border-radius: 2px 0 0 2px; }
+.kmat .br.r { border: 1.5px solid var(--ink-3); border-left: 0; border-radius: 0 2px 2px 0; }
+.kmat table { border-collapse: collapse; font-family: var(--f-mono); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.kmat td { padding: 0 6px; text-align: right; color: var(--ink); line-height: 1.35; }
+.kmat td.z { color: var(--ink-3); }
+.kmat td.hot { color: var(--accent-2); }
+
+.chip {
+  display: inline-flex; align-items: center; gap: 6px; align-self: flex-start;
+  font-family: var(--f-mono); font-size: 11.5px; padding: 2px 9px 2px 7px;
+  border-radius: 999px; border: 1px solid; white-space: nowrap;
+}
+.chip .d { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.chip.ok  { color: var(--ok);  border-color: color-mix(in srgb, var(--ok) 45%, transparent);  background: color-mix(in srgb, var(--ok) 10%, transparent); }
+.chip.bad { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 45%, transparent); background: color-mix(in srgb, var(--bad) 12%, transparent); }
+
+@media (prefers-reduced-motion: no-preference) {
+  .tab, .btn, .tg, .iconbtn { transition: background-color .12s ease, color .12s ease, border-color .12s ease; }
+}
+@media (max-width: 900px) {
+  /* The canvas is the point, so it goes first; the controls follow it
+     instead of burying it under a thousand pixels of sliders. */
+  .app { height: auto; min-height: 100vh; }
+  .body { flex-direction: column; }
+  .stage { order: 1; }
+  .rail { order: 2; width: 100%; border-right: 0;
+          border-top: 1px solid var(--line); }
+  .panes, #panes-2d { flex-direction: column; flex: none; }
+  /* Stacked, each pane is as tall as its frame. Left on flex:1 1 0 they get a
+     zero basis, collapse, and their frames overlap each other. */
+  .pane, .panes.two > .pane, #panes-2d .pane, .row2 .pane { flex: none; min-height: 0; }
+  #panes-3d .pane.sensor { flex: none; min-width: 0; }
+  /* Stacked, each frame is sized by its aspect instead of by leftover space --
+     with flex:1 and nothing to share, they collapse to zero height. */
+  .stage .frame { flex: none; width: 100%; height: auto; }
+  #panes-3d .frame, #panes-2d .frame { aspect-ratio: 4 / 3; }
+  .row2 { height: auto; flex-direction: column; }
+  .row2 .frame { aspect-ratio: 16 / 9; }
+  .brand .sub { display: none; }
+  /* A rail this wide must not strand the value 700px from its label. */
+  .group > .gbody { max-width: 520px; }
+  .status { flex-wrap: wrap; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header class="topbar">
+    <div class="brand">
+      <h1>Intrinsics Bench</h1>
+      <span class="sub">K &amp; D, live</span>
+    </div>
+
+    <div class="tabs" role="tablist" aria-label="View">
+      <button class="tab" role="tab" id="tab-3d" aria-selected="true" aria-controls="stage">3D scene</button>
+      <button class="tab" role="tab" id="tab-2d" aria-selected="false" aria-controls="stage">2D chart</button>
+    </div>
+
+    <label class="field">
+      <span class="flabel">Lens</span>
+      <select id="preset" aria-label="Preset lens"></select>
+    </label>
+
+    <span class="spacer"></span>
+    <div class="btnrow" style="flex:none">
+      <button class="btn" id="copy">Copy K &amp; D</button>
+      <button class="btn" id="reset">Reset</button>
+    </div>
+    <button class="iconbtn" id="theme" title="Switch theme" aria-label="Switch theme">
+      <svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true">
+        <circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.4"/>
+        <path d="M8 1.8a6.2 6.2 0 0 0 0 12.4z" fill="currentColor"/>
+      </svg>
+    </button>
+  </header>
+
+  <div class="body">
+    <aside class="rail" id="rail">
+
+      <section class="group" id="grp-k" data-open="1">
+        <button class="ghead" type="button" aria-expanded="true">
+          <svg class="caret" viewBox="0 0 10 10" aria-hidden="true"><path d="M3 1.5 L7.5 5 L3 8.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><h2>Intrinsics — K</h2><span class="gnote" id="sensor-note">640 × 480 sensor</span>
+        </button>
+        <div class="gbody">
+          <div id="g-k"></div>
+          <div class="toggles" style="margin-top:10px">
+            <label class="tg"><input type="checkbox" id="lock-f" checked><span class="dot"></span>lock fx = fy</label>
+            <label class="tg"><input type="checkbox" id="show-skew"><span class="dot"></span>show skew</label>
+          </div>
+        </div>
+      </section>
+
+      <section class="group" id="grp-d" data-open="1">
+        <button class="ghead" type="button" aria-expanded="true">
+          <svg class="caret" viewBox="0 0 10 10" aria-hidden="true"><path d="M3 1.5 L7.5 5 L3 8.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><h2>Distortion — D</h2><span class="gnote">k1 k2 k3 radial · p1 p2 tangential</span>
+        </button>
+        <div class="gbody">
+          <div id="g-d"></div>
+          <div class="toggles" style="margin-top:10px">
+            <label class="tg"><input type="checkbox" id="use-d" checked><span class="dot"></span>apply distortion</label>
+          </div>
+        </div>
+      </section>
+
+      <section class="group" id="grp-view" data-open="0">
+        <button class="ghead" type="button" aria-expanded="false">
+          <svg class="caret" viewBox="0 0 10 10" aria-hidden="true"><path d="M3 1.5 L7.5 5 L3 8.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><h2>Camera pose</h2><span class="gnote">or drag the camera view</span>
+        </button>
+        <div class="gbody">
+          <div id="g-cam"></div>
+        </div>
+      </section>
+
+      <section class="group" id="grp-obs" data-open="0">
+        <button class="ghead" type="button" aria-expanded="false">
+          <svg class="caret" viewBox="0 0 10 10" aria-hidden="true"><path d="M3 1.5 L7.5 5 L3 8.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><h2>Observer</h2><span class="gnote">or drag the world view</span>
+        </button>
+        <div class="gbody">
+          <div id="g-obs"></div>
+        </div>
+      </section>
+
+      <section class="group" id="grp-chart" data-open="1" hidden>
+        <button class="ghead" type="button" aria-expanded="true">
+          <svg class="caret" viewBox="0 0 10 10" aria-hidden="true"><path d="M3 1.5 L7.5 5 L3 8.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><h2>Test chart</h2>
+        </button>
+        <div class="gbody">
+          <div class="seg" id="chart-seg" role="group" aria-label="Test chart">
+            <button aria-pressed="true"  data-chart="grid">Grid</button>
+            <button aria-pressed="false" data-chart="checker">Checker</button>
+            <button aria-pressed="false" data-chart="radial">Radial</button>
+            <button aria-pressed="false" data-chart="street">Street</button>
+          </div>
+          <div id="g-alpha" style="margin-top:12px"></div>
+        </div>
+      </section>
+
+      <section class="group" id="grp-display" data-open="0">
+        <button class="ghead" type="button" aria-expanded="false">
+          <svg class="caret" viewBox="0 0 10 10" aria-hidden="true"><path d="M3 1.5 L7.5 5 L3 8.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><h2>Display</h2>
+        </button>
+        <div class="gbody">
+          <div class="toggles">
+            <label class="tg"><input type="checkbox" id="show-grid" checked><span class="dot"></span>ground grid</label>
+            <label class="tg"><input type="checkbox" id="show-frustum" checked><span class="dot"></span>frustum</label>
+          </div>
+        </div>
+      </section>
+    </aside>
+
+    <main class="stage" id="stage">
+      <div class="panes two" id="panes-3d">
+        <div class="pane">
+          <div class="cap"><b>World view</b><span>cyan = the frustum K describes · drag to orbit</span></div>
+          <div class="frame grab"><canvas id="cv-world"></canvas><span class="hint">drag · scroll to dolly</span></div>
+        </div>
+        <div class="pane sensor">
+          <div class="cap"><b>Camera view</b><span id="cap-cam">640 × 480 · distortion on</span></div>
+          <div class="frame grab"><canvas id="cv-cam"></canvas><span class="hint">drag to move the camera</span></div>
+        </div>
+      </div>
+
+      <div class="panes" id="panes-2d" hidden>
+        <div class="pane">
+          <div class="cap"><b>No distortion</b><span>the same K, with D = 0</span></div>
+          <div class="frame"><canvas id="cv-ideal"></canvas></div>
+        </div>
+        <div class="pane">
+          <div class="cap"><b>Camera view</b><span>K and D applied</span></div>
+          <div class="frame"><canvas id="cv-dist"></canvas></div>
+        </div>
+        <div class="pane">
+          <div class="cap"><b>Undistorted</b><span id="cap-und">α = 0.0</span></div>
+          <div class="frame"><canvas id="cv-und"></canvas></div>
+        </div>
+      </div>
+
+      <div class="row2">
+        <div class="pane">
+          <div class="cap"><b>Radial profile</b><span>r′ against r — the whole radial model</span></div>
+          <div class="frame"><canvas id="cv-profile"></canvas></div>
+        </div>
+        <div class="pane">
+          <div class="cap"><b>Displacement field</b><span>where D pushes each pixel</span></div>
+          <div class="frame"><canvas id="cv-field"></canvas></div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <footer class="status">
+    <div class="cell">
+      <span class="k">Intrinsic matrix</span>
+      <div class="kmat">
+        <div class="br"></div>
+        <table id="ktab"><tbody></tbody></table>
+        <div class="br r"></div>
+      </div>
+    </div>
+    <div class="cell">
+      <span class="k">Distortion</span>
+      <span class="v" id="dvec">—</span>
+    </div>
+    <div class="cell">
+      <span class="k">Field of view</span>
+      <span class="v" id="fov">—</span>
+    </div>
+    <div class="cell">
+      <span class="k">Principal offset</span>
+      <span class="v" id="poff">—</span>
+    </div>
+    <div class="cell">
+      <span class="k">Model</span>
+      <span class="chip ok" id="valid"><span class="d"></span><span>invertible</span></span>
+    </div>
+    <div class="cell" style="flex:1"></div>
+  </footer>
+</div>
+<script>
+"use strict";
+/* ===========================================================================
+   Intrinsics Bench
+   ---------------------------------------------------------------------------
+   The viewer half of learn_camera_intrinsics. The maths below is a direct port
+   of python/camintrinsics/intrinsics.py and cpp/src/intrinsics.cpp -- same
+   formulas, same conventions, same numbers.
+
+   Conventions: camera looks down +Z, +X right, +Y down (OpenCV).
+   (x, y) are normalized image coordinates; (u, v) are pixels.
+   =========================================================================== */
+
+/* --- 1. K ---------------------------------------------------------------- */
+const makeK = (fx, fy, cx, cy, s = 0) => ({ fx, fy, cx, cy, s });
+
+function fovDeg(K, w, h) {
+  const hf = Math.atan2(K.cx, K.fx) + Math.atan2(w - K.cx, K.fx);
+  const vf = Math.atan2(K.cy, K.fy) + Math.atan2(h - K.cy, K.fy);
+  let rmax = 0;
+  for (const [u, v] of [[0, 0], [w, 0], [0, h], [w, h]]) {
+    const x = (u - K.cx) / K.fx, y = (v - K.cy) / K.fy;
+    rmax = Math.max(rmax, Math.hypot(x, y));
+  }
+  const D = 180 / Math.PI;
+  return [hf * D, vf * D, 2 * Math.atan(rmax) * D];
+}
+
+const toPixel = (x, y, K) => [K.fx * x + K.s * y + K.cx, K.fy * y + K.cy];
+function toNormalized(u, v, K) {
+  const y = (v - K.cy) / K.fy;
+  return [(u - K.cx - K.s * y) / K.fx, y];
+}
+
+/* --- 2. D: the plumb-bob model ------------------------------------------ */
+function distort(x, y, D) {
+  const [k1, k2, p1, p2, k3] = D;
+  const r2 = x * x + y * y, r4 = r2 * r2, r6 = r4 * r2;
+  const rad = 1 + k1 * r2 + k2 * r4 + k3 * r6;
+  return [x * rad + 2 * p1 * x * y + p2 * (r2 + 2 * x * x),
+          y * rad + p1 * (r2 + 2 * y * y) + 2 * p2 * x * y];
+}
+
+/* No closed form exists. OpenCV uses a fixed-point iteration, which stops
+   contracting near the corners of a strong wide-angle lens and silently
+   oscillates. This is Newton's method on the same 2x2 system.
+
+   Newton is fast but not magic: a point past the fold radius has no solution,
+   and a step can land on the polynomial's other root (for k1 = -0.5,
+   undistorting r' = 0.82 gives x = -1.72, which solves the equation and means
+   nothing). Both are rejected -- by radius up front, by residual afterwards --
+   and rejected points come back as NaN. Pass rLimit when you already have it;
+   computing it costs a 2000-sample scan. */
+function undistort(xd, yd, D, rLimit) {
+  const ITERS = 30, STEP_TOL = 1e-12, RESID_TOL = 1e-9;
+  if (rLimit === undefined) rLimit = maxDistortedRadius(D);
+  if (Math.hypot(xd, yd) > rLimit) return [NaN, NaN];
+
+  const [k1, k2, p1, p2, k3] = D;
+  let x = xd, y = yd;
+  for (let i = 0; i < ITERS; i++) {
+    const r2 = x * x + y * y, r4 = r2 * r2, r6 = r4 * r2;
+    const rad = 1 + k1 * r2 + k2 * r4 + k3 * r6;
+    const drad = k1 + 2 * k2 * r2 + 3 * k3 * r4;      // d(rad)/d(r^2)
+    const fx = x * rad + 2 * p1 * x * y + p2 * (r2 + 2 * x * x);
+    const fy = y * rad + p1 * (r2 + 2 * y * y) + 2 * p2 * x * y;
+    const j00 = rad + 2 * x * x * drad + 2 * p1 * y + 6 * p2 * x;
+    const j01 = 2 * x * y * drad + 2 * p1 * x + 2 * p2 * y;
+    const j11 = rad + 2 * y * y * drad + 6 * p1 * y + 2 * p2 * x;
+    const rx = xd - fx, ry = yd - fy;
+    const det = j00 * j11 - j01 * j01;                 // symmetric Jacobian
+    // A near-singular Jacobian means no usable step. Take none rather than a
+    // clamped one: clamping |det| keeps the magnitude at ~1/eps and, for a
+    // negative det, points the step the wrong way.
+    if (Math.abs(det) <= 1e-12) break;
+    const dx = (j11 * rx - j01 * ry) / det;
+    const dy = (-j01 * rx + j00 * ry) / det;
+    x += dx; y += dy;
+    if (Math.abs(dx) < STEP_TOL && Math.abs(dy) < STEP_TOL) break;
+  }
+  // Believe the answer only if it solves the equation we were given.
+  const [bx, by] = distort(x, y, D);
+  return Math.hypot(bx - xd, by - yd) > RESID_TOL ? [NaN, NaN] : [x, y];
+}
+
+/* Radius where r'(r) stops increasing: past it the model folds over and
+   undistortion is no longer unique. */
+function maxValidRadius(D, rMax = 3, n = 2000) {
+  let prev = 0;
+  for (let i = 1; i < n; i++) {
+    const r = rMax * i / (n - 1), rd = distort(r, 0, D)[0];
+    if (rd <= prev) return rMax * (i - 1) / (n - 1);
+    prev = rd;
+  }
+  return rMax;
+}
+const maxDistortedRadius = (D) => distort(maxValidRadius(D), 0, D)[0];
+
+function isInvertibleOverImage(K, D, w, h) {
+  const lim = maxDistortedRadius(D);
+  for (const [u, v] of [[0, 0], [w, 0], [0, h], [w, h]]) {
+    const [x, y] = toNormalized(u, v, K);
+    if (Math.hypot(x, y) > lim) return false;
+  }
+  return true;
+}
+
+/* --- 3. Full forward model ---------------------------------------------- */
+/* Past the fold radius the forward model is still defined, but it maps rays
+   back INWARD -- draw them and you get a confident-looking starburst of
+   geometry the lens could never have formed. rFold cuts them instead. */
+function project(P, K, D, rFold) {               // P = [X, Y, Z] camera frame
+  if (P[2] <= 1e-9) return null;                 // behind the camera
+  const x = P[0] / P[2], y = P[1] / P[2];
+  if (rFold !== undefined && Math.hypot(x, y) > rFold) return null;
+  const [xd, yd] = distort(x, y, D);
+  return toPixel(xd, yd, K);
+}
+
+/* --- 4. getOptimalNewCameraMatrix, following OpenCV's icvGetRectangles --- */
+function optimalNewCameraMatrix(K, D, w, h, alpha, roiOut) {
+  const N = 9;
+  const rLimit = maxDistortedRadius(D);
+  let iL = -Infinity, iR = Infinity, iT = -Infinity, iB = Infinity;
+  let oL = Infinity, oR = -Infinity, oT = Infinity, oB = -Infinity;
+  for (let j = 0; j < N; j++) {
+    for (let i = 0; i < N; i++) {
+      const u = i * (w - 1) / (N - 1), v = j * (h - 1) / (N - 1);
+      const [xd, yd] = toNormalized(u, v, K);
+      const [x, y] = undistort(xd, yd, D, rLimit);
+      if (!isFinite(x) || !isFinite(y))
+        throw new RangeError("this lens cannot be undistorted over the whole " +
+          "image: some pixels lie past the model's fold radius");
+      oL = Math.min(oL, x); oR = Math.max(oR, x);
+      oT = Math.min(oT, y); oB = Math.max(oB, y);
+      if (i === 0)     iL = Math.max(iL, x);
+      if (i === N - 1) iR = Math.min(iR, x);
+      if (j === 0)     iT = Math.max(iT, y);
+      if (j === N - 1) iB = Math.min(iB, y);
+    }
+  }
+  const mix = (a, b) => a * (1 - alpha) + b * alpha;
+  const x0 = mix(iL, oL), y0 = mix(iT, oT);
+  const x1 = mix(iR, oR), y1 = mix(iB, oB);
+  const fx = (w - 1) / Math.max(x1 - x0, 1e-9);
+  const fy = (h - 1) / Math.max(y1 - y0, 1e-9);
+  const KNew = makeK(fx, fy, -fx * x0, -fy * y0);
+  if (roiOut) {                       // the inner rectangle, in the new grid
+    roiOut.x = Math.max(0, Math.ceil(fx * iL + KNew.cx));
+    roiOut.y = Math.max(0, Math.ceil(fy * iT + KNew.cy));
+    roiOut.w = Math.max(0, Math.min(w, Math.floor(fx * iR + KNew.cx)) - roiOut.x);
+    roiOut.h = Math.max(0, Math.min(h, Math.floor(fy * iB + KNew.cy)) - roiOut.y);
+  }
+  return KNew;
+}
+
+/* ===========================================================================
+   Scene: everything is a subdivided polyline.
+   A straight world line stays straight under a pinhole projection but bends
+   under distortion -- store only the endpoints and you could never show that.
+   =========================================================================== */
+const C = {
+  white: "#ebebeb", grey: "#787878", dim: "#3f4250",
+  red: "#eb3c3c", green: "#5ad25a", blue: "#3ca0eb",
+  yellow: "#ebd23c", cyan: "#3cdcdc", magenta: "#c83cc8", orange: "#fa8c28",
+};
+
+const seg = (a, b, color, width = 1, n = 24) => {
+  const pts = [];
+  for (let i = 0; i <= n; i++) {
+    const t = i / n;
+    pts.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]);
+  }
+  return { pts, color, width };
+};
+
+function poly(corners, color, width = 1, n = 14, fill = null) {
+  const pts = [];
+  for (let i = 0; i < corners.length; i++) {
+    const a = corners[i], b = corners[(i + 1) % corners.length];
+    for (let k = 0; k < n; k++) {
+      const t = k / n;
+      pts.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]);
+    }
+  }
+  return { pts, color, width, closed: true, fill };
+}
+
+function cube(c, size, color, width = 2) {
+  const h = size / 2, out = [];
+  const v = [[-1,-1,-1],[1,-1,-1],[1,1,-1],[-1,1,-1],[-1,-1,1],[1,-1,1],[1,1,1],[-1,1,1]]
+    .map(p => [c[0] + p[0] * h, c[1] + p[1] * h, c[2] + p[2] * h]);
+  for (const [a, b] of [[0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4],[0,4],[1,5],[2,6],[3,7]])
+    out.push(seg(v[a], v[b], color, width));
+  return out;
+}
+
+function sphereWire(c, r, rings, color) {
+  const out = [], SEG = 56;
+  for (let i = 1; i < rings; i++) {
+    const phi = Math.PI * i / rings, pts = [];
+    for (let k = 0; k < SEG; k++) {
+      const t = 2 * Math.PI * k / SEG;
+      pts.push([c[0] + r * Math.sin(phi) * Math.cos(t), c[1] + r * Math.cos(phi),
+                c[2] + r * Math.sin(phi) * Math.sin(t)]);
+    }
+    out.push({ pts, color, width: 1, closed: true });
+  }
+  for (let j = 0; j < rings; j++) {
+    const th = Math.PI * j / rings, pts = [];
+    for (let k = 0; k < SEG; k++) {
+      const t = 2 * Math.PI * k / SEG;
+      pts.push([c[0] + r * Math.sin(t) * Math.cos(th), c[1] + r * Math.cos(t),
+                c[2] + r * Math.sin(t) * Math.sin(th)]);
+    }
+    out.push({ pts, color, width: 1, closed: true });
+  }
+  return out;
+}
+
+function checkerboard(rows, cols, sq, o) {
+  const out = [];
+  for (let r = 0; r < rows; r++)
+    for (let c = 0; c < cols; c++) {
+      const q = [[c, r], [c + 1, r], [c + 1, r + 1], [c, r + 1]]
+        .map(([a, b]) => [o[0] + a * sq, o[1] + b * sq, o[2]]);
+      const col = (r + c) % 2 === 0 ? "#232323" : "#e1e1e1";
+      out.push(poly(q, col, 1, 8, col));
+    }
+  return out;
+}
+
+function defaultScene(grid = true) {
+  const s = [];
+  if (grid) {
+    for (let t = -7; t <= 7.0001; t += 0.5) {
+      const col = Math.abs(t) < 1e-9 ? C.grey : C.dim;
+      s.push(seg([t, 1.3, -7], [t, 1.3, 7], col, 1, 40));
+      s.push(seg([-7, 1.3, t], [7, 1.3, t], col, 1, 40));
+    }
+  }
+  s.push(seg([0, 0, 0], [0.9, 0, 0], C.red, 2), seg([0, 0, 0], [0, 0.9, 0], C.green, 2),
+         seg([0, 0, 0], [0, 0, 0.9], C.blue, 2));
+  s.push(...cube([-1.35, 0.45, 3.8], 1.4, C.yellow));
+  s.push(...cube([1.55, 0.65, 5.4], 1.2, C.orange));
+  s.push(...sphereWire([0.2, 0.1, 2.6], 0.5, 5, C.magenta));
+  s.push(...checkerboard(5, 7, 0.34, [-1.2, -1.65, 4.9]));
+  return s;
+}
+
+/* ===========================================================================
+   Renderer: a wireframe rasteriser where K and D are the only optics.
+   =========================================================================== */
+const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+const cross = (a, b) => [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]];
+const norm = (a) => Math.hypot(a[0], a[1], a[2]);
+const unit = (a) => { const n = norm(a) || 1; return [a[0]/n, a[1]/n, a[2]/n]; };
+
+/* Pose: p_cam = R p_world + t */
+function lookAt(eye, target) {
+  const z = unit(sub(target, eye));
+  let x = cross([0, 1, 0], z);                 // world +Y is down, so this is "right"
+  if (norm(x) < 1e-9) x = cross([1, 0, 0], z);
+  x = unit(x);
+  const y = cross(z, x);
+  const R = [x, y, z];
+  const t = [-(R[0][0]*eye[0] + R[0][1]*eye[1] + R[0][2]*eye[2]),
+             -(R[1][0]*eye[0] + R[1][1]*eye[1] + R[1][2]*eye[2]),
+             -(R[2][0]*eye[0] + R[2][1]*eye[1] + R[2][2]*eye[2])];
+  return { R, t, eye };
+}
+
+function orbitPose(target, dist, yawDeg, pitchDeg) {
+  const yaw = yawDeg * Math.PI / 180, pitch = pitchDeg * Math.PI / 180;
+  const eye = [target[0] + dist * Math.cos(pitch) * Math.sin(yaw),
+               target[1] - dist * Math.sin(pitch),
+               target[2] - dist * Math.cos(pitch) * Math.cos(yaw)];
+  return lookAt(eye, target);
+}
+
+const applyPose = (pose, p) => [
+  pose.R[0][0]*p[0] + pose.R[0][1]*p[1] + pose.R[0][2]*p[2] + pose.t[0],
+  pose.R[1][0]*p[0] + pose.R[1][1]*p[1] + pose.R[1][2]*p[2] + pose.t[1],
+  pose.R[2][0]*p[0] + pose.R[2][1]*p[1] + pose.R[2][2]*p[2] + pose.t[2],
+];
+
+/* Split a camera-frame polyline into runs in front of the near plane. Skip
+   this and a point just behind the camera projects to a wild coordinate,
+   streaking across the image. */
+function clipNear(pts, near) {
+  const runs = []; let cur = [];
+  const cut = (a, b) => {
+    const s = (near - a[2]) / (b[2] - a[2]);
+    return [a[0] + (b[0]-a[0])*s, a[1] + (b[1]-a[1])*s, near];
+  };
+  for (let i = 0; i < pts.length; i++) {
+    if (pts[i][2] >= near) cur.push(pts[i]);
+    else {
+      if (cur.length) { cur.push(cut(cur[cur.length-1], pts[i])); runs.push(cur); cur = []; }
+      if (i + 1 < pts.length && pts[i+1][2] >= near) cur.push(cut(pts[i], pts[i+1]));
+    }
+  }
+  if (cur.length) runs.push(cur);
+  return runs.filter(r => r.length >= 2);
+}
+
+function renderScene(ctx, items, pose, K, D, opt = {}) {
+  const near = opt.near ?? 0.05, clip = opt.clip ?? 8000, rFold = opt.rFold;
+  ctx.lineJoin = "round"; ctx.lineCap = "round";
+  for (const it of items) {
+    let cam = it.pts.map(p => applyPose(pose, p));
+    if (it.closed && cam.length > 2) cam = cam.concat([cam[0]]);
+    for (const run of clipNear(cam, near)) {
+      const uv = [];
+      let ok = true;
+      for (const p of run) {
+        const q = project(p, K, D, rFold);
+        if (!q || !isFinite(q[0]) || !isFinite(q[1]) || Math.abs(q[0]) > clip || Math.abs(q[1]) > clip) { ok = false; break; }
+        uv.push(q);
+      }
+      if (!ok || uv.length < 2) continue;
+      ctx.beginPath();
+      ctx.moveTo(uv[0][0], uv[0][1]);
+      for (let i = 1; i < uv.length; i++) ctx.lineTo(uv[i][0], uv[i][1]);
+      if (it.fill) { ctx.closePath(); ctx.fillStyle = it.fill; ctx.fill(); }
+      else { ctx.strokeStyle = it.color; ctx.lineWidth = it.width; ctx.stroke(); }
+    }
+  }
+}
+
+/* The frustum K describes, drawn in world coordinates. Raise fx and the
+   pyramid narrows; slide cx and it shears off the optical axis. */
+function frustumItems(K, w, h, near, far, pose) {
+  const toWorld = (p) => {
+    const d = [p[0] - pose.t[0], p[1] - pose.t[1], p[2] - pose.t[2]];
+    return [pose.R[0][0]*d[0] + pose.R[1][0]*d[1] + pose.R[2][0]*d[2],
+            pose.R[0][1]*d[0] + pose.R[1][1]*d[1] + pose.R[2][1]*d[2],
+            pose.R[0][2]*d[0] + pose.R[1][2]*d[1] + pose.R[2][2]*d[2]];
+  };
+  const rays = [[0,0],[w,0],[w,h],[0,h]].map(([u,v]) => { const [x,y] = toNormalized(u,v,K); return [x,y,1]; });
+  const nearW = rays.map(r => toWorld([r[0]*near, r[1]*near, near]));
+  const farW  = rays.map(r => toWorld([r[0]*far,  r[1]*far,  far]));
+  const org   = toWorld([0, 0, 0]);
+  const out = [poly(farW, C.cyan, 2, 10), poly(nearW, C.dim, 1, 6)];
+  for (const f of farW) out.push(seg(org, f, C.cyan, 2));
+  const topMid = [(farW[0][0]+farW[1][0])/2, (farW[0][1]+farW[1][1])/2, (farW[0][2]+farW[1][2])/2];
+  const botMid = [(farW[2][0]+farW[3][0])/2, (farW[2][1]+farW[3][1])/2, (farW[2][2]+farW[3][2])/2];
+  out.push(seg(topMid, [topMid[0] + (topMid[0]-botMid[0])*0.14, topMid[1] + (topMid[1]-botMid[1])*0.14,
+                        topMid[2] + (topMid[2]-botMid[2])*0.14], C.magenta, 2));
+  // camera body + axis triad, so the optical axis is unmistakable
+  const s = 0.2;
+  const body = [[-s,-0.7*s,-1.6*s],[s,-0.7*s,-1.6*s],[s,0.7*s,-1.6*s],[-s,0.7*s,-1.6*s],
+                [-s,-0.7*s,0],[s,-0.7*s,0],[s,0.7*s,0],[-s,0.7*s,0]].map(toWorld);
+  for (const [a,b] of [[0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4],[0,4],[1,5],[2,6],[3,7]])
+    out.push(seg(body[a], body[b], C.white, 1, 2));
+  const a = s * 2.4;
+  out.push(seg(org, toWorld([a,0,0]), C.red, 2, 2),
+           seg(org, toWorld([0,a,0]), C.green, 2, 2),
+           seg(org, toWorld([0,0,a]), C.blue, 2, 2));
+  return out;
+}
+
+/* ===========================================================================
+   2D test charts. Vector, not raster: every point goes through the model, so
+   the lines stay crisp and the bending is exact rather than resampled.
+   Coordinates are normalized image coordinates, x in [-1, 1], y in [-.75, .75].
+   =========================================================================== */
+const XR = 2.0, YR = 1.5;
+function line2(a, b, color, width, n = 40) {
+  const pts = [];
+  for (let i = 0; i <= n; i++) { const t = i/n; pts.push([a[0]+(b[0]-a[0])*t, a[1]+(b[1]-a[1])*t]); }
+  return { pts, color, width };
+}
+function quad2(x0, y0, x1, y1, fill, n = 8) {
+  const cs = [[x0,y0],[x1,y0],[x1,y1],[x0,y1]], pts = [];
+  for (let i = 0; i < 4; i++) {
+    const a = cs[i], b = cs[(i+1)%4];
+    for (let k = 0; k < n; k++) { const t = k/n; pts.push([a[0]+(b[0]-a[0])*t, a[1]+(b[1]-a[1])*t]); }
+  }
+  return { pts, fill, closed: true };
+}
+
+const CHARTS = {
+  grid() {
+    const out = [], step = 0.125;
+    for (let i = -16; i <= 16; i++) {
+      const x = i * step, major = i % 5 === 0;
+      out.push(line2([x, -YR], [x, YR], major ? "#f0a63c" : "#9b9aa8", major ? 2 : 1));
+    }
+    for (let j = -12; j <= 12; j++) {
+      const y = j * step, major = j % 5 === 0;
+      out.push(line2([-XR, y], [XR, y], major ? "#f0a63c" : "#9b9aa8", major ? 2 : 1));
+    }
+    out.push({ pts: [[-XR,-YR],[XR,-YR],[XR,YR],[-XR,YR]].flatMap((p, i, a) => {
+      const b = a[(i+1)%4], r = [];
+      for (let k = 0; k < 30; k++) { const t = k/30; r.push([p[0]+(b[0]-p[0])*t, p[1]+(b[1]-p[1])*t]); }
+      return r; }), color: C.green, width: 2, closed: true });
+    return out;
+  },
+  checker() {
+    const out = [], n = 10, sq = (2 * YR * 0.92) / n, x0 = -n * sq / 2, y0 = -n * sq / 2;
+    for (let r = 0; r < n; r++) for (let c = 0; c < n; c++)
+      if ((r + c) % 2) out.push(quad2(x0 + c*sq, y0 + r*sq, x0 + (c+1)*sq, y0 + (r+1)*sq, "#e6e6ea"));
+    out.push({ pts: [[x0,y0],[x0+n*sq,y0],[x0+n*sq,y0+n*sq],[x0,y0+n*sq]].flatMap((p,i,a) => {
+      const b = a[(i+1)%4], q = [];
+      for (let k = 0; k < 24; k++) { const t = k/24; q.push([p[0]+(b[0]-p[0])*t, p[1]+(b[1]-p[1])*t]); }
+      return q; }), color: C.blue, width: 2, closed: true });
+    return out;
+  },
+  radial() {
+    const out = [], rings = 12, spokes = 32, rmax = Math.hypot(XR, YR);
+    for (let i = 1; i <= rings; i++) {
+      const r = rmax * i / rings, pts = [];
+      for (let k = 0; k <= 96; k++) { const t = 2*Math.PI*k/96; pts.push([r*Math.cos(t), r*Math.sin(t)]); }
+      out.push({ pts, color: "#a8a7b5", width: 1 });
+    }
+    for (let k = 0; k < spokes; k++) {
+      const a = 2 * Math.PI * k / spokes;
+      out.push(line2([0, 0], [rmax*Math.cos(a), rmax*Math.sin(a)], "#65647a", 1));
+    }
+    return out;
+  },
+  street() {
+    const out = [], hz = -0.10;
+    out.push(quad2(-XR, -YR, XR, hz, "#3a2f26"));
+    out.push(quad2(-XR, hz, XR, YR, "#241f1c"));
+    for (let i = -4; i <= 4; i++) out.push(line2([0, hz], [i * XR / 2.2, YR], "#dcdcdc", 3));
+    const blds = [[-0.95, 0.30, 0.34], [-0.52, 0.22, 0.26], [0.30, 0.34, 0.40], [0.76, 0.22, 0.24]];
+    for (const [bx, bw, bh] of blds) {
+      out.push(quad2(bx, hz - bh, bx + bw, hz, "#5b5b66"));
+      for (let wy = hz - bh + 0.045; wy < hz - 0.03; wy += 0.075)
+        for (let wx = bx + 0.03; wx < bx + bw - 0.05; wx += 0.07)
+          out.push(quad2(wx, wy, wx + 0.035, wy + 0.04, "#46bee6"));
+    }
+    out.push(line2([-XR, hz], [XR, hz], "#e6e6e6", 2));
+    return out;
+  },
+};
+
+/* Draw a vector chart through an arbitrary (K, D). `map` turns a normalized
+   chart point into a pixel; that is the only thing that differs between the
+   three 2D panes. */
+const drawable = (p) => p && isFinite(p[0]) && isFinite(p[1]) &&
+  Math.abs(p[0]) < 9000 && Math.abs(p[1]) < 9000;
+
+function drawChart(ctx, items, map) {
+  ctx.lineJoin = "round"; ctx.lineCap = "round";
+  for (const it of items) {
+    const uv = it.pts.map(map);
+    if (it.fill) {                       // a partly-cut fill is dropped whole
+      if (!uv.every(drawable)) continue;
+      ctx.beginPath();
+      ctx.moveTo(uv[0][0], uv[0][1]);
+      for (let i = 1; i < uv.length; i++) ctx.lineTo(uv[i][0], uv[i][1]);
+      ctx.closePath(); ctx.fillStyle = it.fill; ctx.fill();
+      continue;
+    }
+    // A stroke is drawn in runs, so a line that leaves the lens partway
+    // stops there rather than vanishing entirely.
+    const seq = it.closed && uv.length > 2 ? uv.concat([uv[0]]) : uv;
+    let run = [];
+    const flush = () => {
+      if (run.length >= 2) {
+        ctx.beginPath();
+        ctx.moveTo(run[0][0], run[0][1]);
+        for (let i = 1; i < run.length; i++) ctx.lineTo(run[i][0], run[i][1]);
+        ctx.strokeStyle = it.color; ctx.lineWidth = it.width; ctx.stroke();
+      }
+      run = [];
+    };
+    for (const p of seq) drawable(p) ? run.push(p) : flush();
+    flush();
+  }
+}
+
+/* ===========================================================================
+   Diagnostic plots. These live on the dark viewport ground in both themes --
+   they are instrument readouts, not page content.
+   =========================================================================== */
+function plotProfile(ctx, w, h, D) {
+  const m = { l: 40, r: 12, t: 16, b: 26 };
+  const rMax = 1.2;
+  const rs = [], rds = [];
+  for (let i = 0; i < 220; i++) { const r = rMax * i / 219; rs.push(r); rds.push(distort(r, 0, D)[0]); }
+  const yMax = Math.max(rMax, ...rds.map(v => v * 1.05), 1e-6);
+  const X = (r) => m.l + (w - m.l - m.r) * r / rMax;
+  const Y = (v) => h - m.b - (h - m.t - m.b) * v / yMax;
+
+  ctx.strokeStyle = "#242736"; ctx.lineWidth = 1;
+  for (let i = 0; i <= 6; i++) {
+    ctx.beginPath(); ctx.moveTo(X(rMax*i/6), Y(0)); ctx.lineTo(X(rMax*i/6), Y(yMax)); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(X(0), Y(yMax*i/6)); ctx.lineTo(X(rMax), Y(yMax*i/6)); ctx.stroke();
+  }
+  ctx.strokeStyle = "#565a70";                       // the "no distortion" diagonal
+  ctx.setLineDash([4, 3]);
+  ctx.beginPath(); ctx.moveTo(X(0), Y(0)); ctx.lineTo(X(rMax), Y(Math.min(rMax, yMax))); ctx.stroke();
+  ctx.setLineDash([]);
+
+  ctx.strokeStyle = "#e0a94b"; ctx.lineWidth = 2; ctx.beginPath();
+  rs.forEach((r, i) => i ? ctx.lineTo(X(r), Y(rds[i])) : ctx.moveTo(X(r), Y(rds[i])));
+  ctx.stroke();
+
+  const fold = maxValidRadius(D);
+  if (fold < rMax) {                                  // mark where the model folds
+    ctx.strokeStyle = "#e8695b"; ctx.lineWidth = 1; ctx.setLineDash([3, 3]);
+    ctx.beginPath(); ctx.moveTo(X(fold), Y(0)); ctx.lineTo(X(fold), Y(yMax)); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = "#e8695b"; ctx.font = '11px "IBM Plex Mono", monospace';
+    ctx.fillText("folds", X(fold) + 4, Y(yMax) + 12);
+  }
+  ctx.strokeStyle = "#5b5f76"; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(X(0), Y(0)); ctx.lineTo(X(rMax), Y(0)); ctx.moveTo(X(0), Y(0)); ctx.lineTo(X(0), Y(yMax)); ctx.stroke();
+
+  ctx.fillStyle = "#8e8ca3"; ctx.font = '10.5px "IBM Plex Mono", monospace';
+  ctx.fillText("r", w - m.r - 8, h - 8);
+  ctx.fillText("r′", 8, m.t + 4);
+  const last = rds[rds.length - 1], lastR = rs[rs.length - 1];
+  const tag = last < lastR - 1e-9 ? "barrel" : last > lastR + 1e-9 ? "pincushion" : "none";
+  ctx.fillStyle = "#e0a94b"; ctx.font = '600 11.5px "IBM Plex Mono", monospace';
+  ctx.fillText(tag, m.l + 6, m.t + 4);
+}
+
+function plotField(ctx, w, h, K, D, camW, camH, rFold) {
+  const step = Math.max(26, Math.round(Math.min(w, h) / 11));
+  const sx = w / camW, sy = h / camH;
+  let mmax = 1e-6, cut = 0;
+  const arrows = [];
+  for (let v = step / 2 / sy; v < camH; v += step / sy)
+    for (let u = step / 2 / sx; u < camW; u += step / sx) {
+      const [x, y] = toNormalized(u, v, K);
+      if (rFold !== undefined && Math.hypot(x, y) > rFold) { cut++; continue; }
+      const [xd, yd] = distort(x, y, D);
+      const [pu, pv] = toPixel(xd, yd, K);
+      const d = Math.hypot(pu - u, pv - v);
+      mmax = Math.max(mmax, d);
+      arrows.push([u * sx, v * sy, (pu - u) * sx, (pv - v) * sy, d]);
+    }
+  for (const [x, y, dx, dy, d] of arrows) {
+    const t = Math.min(1, d / mmax);
+    ctx.strokeStyle = `hsl(${(1 - t) * 210 + 10}, 78%, ${45 + t * 18}%)`;
+    ctx.fillStyle = ctx.strokeStyle;
+    ctx.lineWidth = 1.4;
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + dx, y + dy); ctx.stroke();
+    const L = Math.hypot(dx, dy);
+    if (L > 4) {
+      const a = Math.atan2(dy, dx), s = Math.min(5, L * 0.35);
+      ctx.beginPath();
+      ctx.moveTo(x + dx, y + dy);
+      ctx.lineTo(x + dx - s * Math.cos(a - 0.45), y + dy - s * Math.sin(a - 0.45));
+      ctx.lineTo(x + dx - s * Math.cos(a + 0.45), y + dy - s * Math.sin(a + 0.45));
+      ctx.closePath(); ctx.fill();
+    }
+  }
+  ctx.strokeStyle = "#cfcede"; ctx.lineWidth = 1;                  // principal point
+  const px = K.cx * sx, py = K.cy * sy;
+  ctx.beginPath(); ctx.moveTo(px - 7, py); ctx.lineTo(px + 7, py);
+  ctx.moveTo(px, py - 7); ctx.lineTo(px, py + 7); ctx.stroke();
+  const tag = cut ? `max shift ${mmax.toFixed(1)} px · ${cut} past the fold`
+                  : `max shift ${mmax.toFixed(1)} px`;
+  ctx.font = '10.5px "IBM Plex Mono", monospace';
+  const tw = ctx.measureText(tag).width;
+  ctx.fillStyle = "rgba(16,17,25,.82)";
+  ctx.fillRect(6, h - 22, tw + 12, 17);
+  ctx.fillStyle = "#a5a3b8";
+  ctx.fillText(tag, 12, h - 10);
+}
+
+/* ===========================================================================
+   State and controls
+   =========================================================================== */
+const CAM_W = 640, CAM_H = 480;
+
+const SLIDERS = {
+  k: [
+    { id: "fx", label: "fx", note: "focal x", unit: "px", min: 96,  max: 1600, step: 0.5, def: 320, dec: 1 },
+    { id: "fy", label: "fy", note: "focal y", unit: "px", min: 96,  max: 1600, step: 0.5, def: 320, dec: 1 },
+    { id: "cx", label: "cx", note: "principal x", unit: "px", min: 0, max: CAM_W, step: 0.5, def: CAM_W/2, dec: 1 },
+    { id: "cy", label: "cy", note: "principal y", unit: "px", min: 0, max: CAM_H, step: 0.5, def: CAM_H/2, dec: 1 },
+    { id: "skew", label: "s", note: "skew", unit: "px", min: -200, max: 200, step: 0.5, def: 0, dec: 1, hidden: true },
+  ],
+  d: [
+    { id: "k1", label: "k1", note: "radial", min: -0.6,  max: 0.6,  step: 0.001, def: 0, dec: 3 },
+    { id: "k2", label: "k2", note: "radial", min: -0.4,  max: 0.4,  step: 0.001, def: 0, dec: 3 },
+    { id: "p1", label: "p1", note: "tangential", min: -0.02, max: 0.02, step: 0.0001, def: 0, dec: 4 },
+    { id: "p2", label: "p2", note: "tangential", min: -0.02, max: 0.02, step: 0.0001, def: 0, dec: 4 },
+    { id: "k3", label: "k3", note: "radial", min: -0.2,  max: 0.2,  step: 0.001, def: 0, dec: 3 },
+  ],
+  cam: [
+    { id: "camYaw",   label: "yaw",   unit: "°", min: -180, max: 180, step: 0.5, def: 0,   dec: 1 },
+    { id: "camPitch", label: "pitch", unit: "°", min: -60,  max: 60,  step: 0.5, def: 6,   dec: 1 },
+    { id: "camDist",  label: "dist",  unit: "m", min: 0.6,  max: 9,   step: 0.01, def: 4.6, dec: 2 },
+  ],
+  obs: [
+    { id: "obsYaw",   label: "yaw",   unit: "°", min: -180, max: 180, step: 0.5, def: 38,  dec: 1 },
+    { id: "obsPitch", label: "pitch", unit: "°", min: -80,  max: 80,  step: 0.5, def: 22,  dec: 1 },
+    { id: "obsDist",  label: "dist",  unit: "m", min: 3,    max: 20,  step: 0.05, def: 8,   dec: 2 },
+  ],
+  alpha: [
+    { id: "alpha", label: "α", note: "0 crop · 1 keep all", min: 0, max: 1, step: 0.01, def: 0, dec: 2 },
+  ],
+};
+
+/* Keys are byte-identical to python/camintrinsics/presets.py and
+   cpp/src/presets.cpp, so a name copied from this dropdown works as --preset
+   on the command line and the three tables stay diffable. */
+const PRESETS = {
+  "ideal pinhole":              { f: 1.00, k1: 0,     k2: 0,     p1: 0,     p2: 0,      k3: 0 },
+  "webcam (mild barrel)":       { f: 0.85, k1: -0.18, k2: 0.05,  p1: 0.001, p2: -0.001, k3: 0 },
+  "action cam (strong barrel)": { f: 0.45, k1: -0.35, k2: 0.12,  p1: 0,     p2: 0,      k3: 0 },
+  "tele (pincushion)":          { f: 1.80, k1: 0.22,  k2: -0.06, p1: 0,     p2: 0,      k3: 0 },
+  "decentred lens":             { f: 0.90, k1: -0.12, k2: 0.02,  p1: 0.012, p2: 0.009,  k3: 0 },
+};
+
+const S = {};
+const inputs = {};
+let tab = "3d", chart = "grid", dirty = true;
+
+function buildSliders(container, defs) {
+  for (const d of defs) {
+    S[d.id] = d.def;
+    const row = document.createElement("label");
+    row.className = "ctl";
+    if (d.hidden) row.hidden = true;
+    row.dataset.id = d.id;
+    if (d.note) row.title = `${d.label} — ${d.note}`;
+    row.innerHTML =
+      `<span class="name">${d.label}</span>
+       <span class="trackwrap"><span class="tick"></span><input type="range"></span>
+       <input class="val" type="text" inputmode="decimal" aria-label="${d.label}${d.note ? " " + d.note : ""}">
+       ${d.unit ? `<span class="unit">${d.unit}</span>` : `<span class="unit"></span>`}`;
+    const range = row.querySelector('input[type=range]');
+    const val = row.querySelector(".val");
+    const tick = row.querySelector(".tick");
+    Object.assign(range, { min: d.min, max: d.max, step: d.step, value: d.def });
+    range.setAttribute("aria-label", d.label);
+    tick.style.left = `calc(${((d.def - d.min) / (d.max - d.min)) * 100}% )`;
+    const show = () => { val.value = S[d.id].toFixed(d.dec); range.value = S[d.id]; };
+    range.addEventListener("input", () => { setParam(d.id, parseFloat(range.value)); });
+    val.addEventListener("change", () => {
+      const v = parseFloat(val.value.replace(",", "."));
+      if (isFinite(v)) setParam(d.id, v);
+      else show();
+    });
+    val.addEventListener("focus", () => val.select());
+    inputs[d.id] = { def: d, range, val, row, show };
+    show();
+    container.appendChild(row);
+  }
+}
+
+function setParam(id, v) {
+  // Clamp and snap here, once. Otherwise the range input silently snaps to its
+  // step while S keeps the raw value, and the label, the thumb and the render
+  // disagree about what the parameter is.
+  const d = inputs[id].def;
+  v = Math.min(d.max, Math.max(d.min, v));
+  v = Math.round((v - d.min) / d.step) * d.step + d.min;
+  S[id] = Math.min(d.max, Math.max(d.min, parseFloat(v.toFixed(9))));
+  inputs[id].show();
+  if (document.getElementById("lock-f").checked) {
+    if (id === "fx") { S.fy = v; inputs.fy.show(); }
+    if (id === "fy") { S.fx = v; inputs.fx.show(); }
+  }
+  invalidate();
+}
+
+const invalidate = () => { if (!dirty) { dirty = true; requestAnimationFrame(draw); } };
+const K = () => makeK(S.fx, S.fy, S.cx, S.cy, document.getElementById("show-skew").checked ? S.skew : 0);
+const D = () => document.getElementById("use-d").checked ? [S.k1, S.k2, S.p1, S.p2, S.k3] : [0,0,0,0,0];
+
+/* ===========================================================================
+   Canvas plumbing
+   =========================================================================== */
+function fit(cv) {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = cv.clientWidth, h = cv.clientHeight;
+  if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) {
+    cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+  }
+  const ctx = cv.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+  return { ctx, w, h };
+}
+
+/* The camera has a fixed 640x480 sensor; the pane just displays it, letterboxed.
+   Keeping the sensor size fixed is what keeps the cx/cy ranges meaningful. */
+function sensorView(cv) {
+  const { ctx, w, h } = fit(cv);
+  const s = Math.min(w / CAM_W, h / CAM_H) * 0.96;
+  const ox = (w - CAM_W * s) / 2, oy = (h - CAM_H * s) / 2;
+  ctx.save();
+  ctx.translate(ox, oy); ctx.scale(s, s);
+  ctx.beginPath(); ctx.rect(0, 0, CAM_W, CAM_H); ctx.clip();
+  ctx.fillStyle = "#0b0c12"; ctx.fillRect(0, 0, CAM_W, CAM_H);
+  return { ctx, s, ox, oy, restore: () => {
+    ctx.restore();
+    ctx.strokeStyle = "#3a3f52"; ctx.lineWidth = 1;
+    ctx.strokeRect(ox + .5, oy + .5, CAM_W * s - 1, CAM_H * s - 1);
+  }};
+}
+
+/* Draw the fold radius when it falls inside the frame, so the missing content
+   reads as a limit of the lens model rather than a rendering hole. */
+function drawFoldCircle(ctx, K, D, rFold) {
+  const rd = distort(rFold, 0, D)[0];
+  const corner = Math.hypot(Math.max(K.cx, CAM_W - K.cx) / K.fx,
+                            Math.max(K.cy, CAM_H - K.cy) / K.fy);
+  if (rd * K.fx > Math.hypot(CAM_W, CAM_H) || rFold >= corner) return;
+  ctx.save();
+  ctx.setLineDash([5, 5]);
+  ctx.strokeStyle = "rgba(232,105,91,.55)";
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.ellipse(K.cx, K.cy, rd * K.fx, rd * K.fy, 0, 0, 2 * Math.PI);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = "rgba(232,105,91,.85)";
+  ctx.font = '12px "IBM Plex Mono", monospace';
+  ctx.fillText("lens folds here", K.cx + rd * K.fx * 0.70, K.cy - rd * K.fy * 0.70);
+  ctx.restore();
+}
+
+function crosshair(ctx, K) {
+  ctx.strokeStyle = "#5b5f76"; ctx.lineWidth = 1;                      // geometric centre
+  ctx.beginPath(); ctx.moveTo(CAM_W/2 - 7, CAM_H/2); ctx.lineTo(CAM_W/2 + 7, CAM_H/2);
+  ctx.moveTo(CAM_W/2, CAM_H/2 - 7); ctx.lineTo(CAM_W/2, CAM_H/2 + 7); ctx.stroke();
+  ctx.strokeStyle = C.red; ctx.lineWidth = 1.6;                    // principal point
+  ctx.beginPath();
+  ctx.moveTo(K.cx - 11, K.cy); ctx.lineTo(K.cx + 11, K.cy);
+  ctx.moveTo(K.cx, K.cy - 11); ctx.lineTo(K.cx, K.cy + 11); ctx.stroke();
+  ctx.beginPath(); ctx.arc(K.cx, K.cy, 9, 0, 2 * Math.PI); ctx.lineWidth = 1; ctx.stroke();
+}
+
+/* ===========================================================================
+   Draw
+   =========================================================================== */
+/* The camera pane shows a fixed 640x480 sensor. Left to share the row evenly
+   it was half dead letterbox bar, and CSS aspect-ratio on a flex item does not
+   feed its width back to the parent -- so set the width from the measured
+   height. The 2 px guard stops this from oscillating against the
+   ResizeObserver that called us. */
+function fitSensorPane() {
+  const pane = document.querySelector("#panes-3d .pane.sensor");
+  if (!pane || pane.offsetParent === null) return;
+  // Stacked (narrow) the panes run in a column, where flex-basis is HEIGHT --
+  // setting a width there gives the pane a bogus height and collapses it.
+  if (getComputedStyle(pane.parentElement).flexDirection !== "row") {
+    pane.style.flexBasis = "";
+    return;
+  }
+  const frame = pane.querySelector(".frame");
+  const h = frame.clientHeight;
+  if (h <= 0) return;
+  const row = pane.parentElement.clientWidth;
+  const want = Math.min(Math.round(h * CAM_W / CAM_H), Math.round(row * 0.62));
+  if (Math.abs(want - frame.clientWidth) > 2) pane.style.flexBasis = want + "px";
+}
+
+function draw() {
+  dirty = false;
+  if (tab === "3d") fitSensorPane();
+  const k = K(), d = D();
+  // Where the lens stops being a lens. Computed once: it costs a 2000-sample
+  // scan and three panels need it.
+  const rFold = maxValidRadius(d);
+  const camPose = orbitPose([0, 0, 4], S.camDist, S.camYaw, S.camPitch);
+  const scene = defaultScene(document.getElementById("show-grid").checked);
+
+  if (tab === "3d") {
+    // --- world view: an ideal pinhole observer, so it stays readable --------
+    const cv = document.getElementById("cv-world");
+    const { ctx, w, h } = fit(cv);
+    ctx.fillStyle = "#101119"; ctx.fillRect(0, 0, w, h);
+    const kView = makeK(w * 0.9, w * 0.9, w / 2, h / 2);
+    const obs = orbitPose([0, 0, 2], S.obsDist, S.obsYaw, S.obsPitch);
+    let items = scene;
+    if (document.getElementById("show-frustum").checked)
+      items = items.concat(frustumItems(k, CAM_W, CAM_H, 0.10,
+                                Math.min(3.6, Math.max(0.8, S.camDist * 0.8)), camPose));
+    renderScene(ctx, items, obs, kView, [0,0,0,0,0]);
+
+    // --- camera view: K and D doing all the work ---------------------------
+    const sv = sensorView(document.getElementById("cv-cam"));
+    renderScene(sv.ctx, scene, camPose, k, d, { rFold });
+    crosshair(sv.ctx, k);
+    sv.restore();
+  } else {
+    const items = CHARTS[chart]();
+
+    let sv = sensorView(document.getElementById("cv-ideal"));
+    drawChart(sv.ctx, items, ([x, y]) => toPixel(x, y, k));   // same K, D = 0
+    sv.restore();
+
+    sv = sensorView(document.getElementById("cv-dist"));
+    drawChart(sv.ctx, items, ([x, y]) =>
+      Math.hypot(x, y) > rFold ? null
+                               : toPixel(...distort(x, y, d), k));
+    drawFoldCircle(sv.ctx, k, d, rFold);
+    crosshair(sv.ctx, k);
+    sv.restore();
+
+    // Undistorting is the inverse, so the chart straightens; what changes is
+    // K_new -- and the curved boundary of where real data actually exists.
+    let kNew = null;
+    try { kNew = optimalNewCameraMatrix(k, d, CAM_W, CAM_H, S.alpha); }
+    catch { kNew = null; }               // the lens folds inside the frame
+
+    sv = sensorView(document.getElementById("cv-und"));
+    if (kNew === null) {
+      sv.ctx.fillStyle = "#8e8ca3";
+      sv.ctx.font = '17px "IBM Plex Mono", monospace';
+      sv.ctx.fillText("no undistorted image exists", 96, CAM_H / 2 - 6);
+      sv.ctx.font = '13px "IBM Plex Mono", monospace';
+      sv.ctx.fillText("the model folds inside the frame", 96, CAM_H / 2 + 20);
+      sv.restore();
+      document.getElementById("cap-und").textContent = "undefined for this lens";
+    } else {
+      drawChart(sv.ctx, items, ([x, y]) => toPixel(x, y, kNew));
+      // The curved outline of where real data actually exists -- clearer than
+      // the axis-aligned ROI rectangle OpenCV reports.
+      const edge = [];
+      const N = 40;
+      for (let i = 0; i < N; i++) edge.push([i * CAM_W / N, 0]);
+      for (let i = 0; i < N; i++) edge.push([CAM_W, i * CAM_H / N]);
+      for (let i = N; i > 0; i--) edge.push([i * CAM_W / N, CAM_H]);
+      for (let i = N; i > 0; i--) edge.push([0, i * CAM_H / N]);
+      sv.ctx.beginPath();
+      edge.forEach(([u, v], i) => {
+        const [xd, yd] = toNormalized(u, v, k);
+        const [x, y] = undistort(xd, yd, d);
+        const [pu, pv] = toPixel(x, y, kNew);
+        i ? sv.ctx.lineTo(pu, pv) : sv.ctx.moveTo(pu, pv);
+      });
+      sv.ctx.closePath();
+      sv.ctx.strokeStyle = C.green; sv.ctx.lineWidth = 2; sv.ctx.setLineDash([6, 4]);
+      sv.ctx.stroke(); sv.ctx.setLineDash([]);
+      sv.restore();
+      document.getElementById("cap-und").textContent =
+        `α = ${S.alpha.toFixed(2)} · fx ${kNew.fx.toFixed(1)} · green = real data`;
+    }
+  }
+
+  const p = fit(document.getElementById("cv-profile"));
+  p.ctx.fillStyle = "#101119"; p.ctx.fillRect(0, 0, p.w, p.h);
+  plotProfile(p.ctx, p.w, p.h, [S.k1, S.k2, S.p1, S.p2, S.k3]);
+
+  const f = fit(document.getElementById("cv-field"));
+  f.ctx.fillStyle = "#101119"; f.ctx.fillRect(0, 0, f.w, f.h);
+  plotField(f.ctx, f.w, f.h, k, [S.k1, S.k2, S.p1, S.p2, S.k3], CAM_W, CAM_H,
+            maxValidRadius([S.k1, S.k2, S.p1, S.p2, S.k3]));
+
+  updateStatus(k);
+}
+
+let prevK = null;
+function updateStatus(k) {
+  const rows = [[k.fx, k.s, k.cx], [0, k.fy, k.cy], [0, 0, 1]];
+  const body = document.querySelector("#ktab tbody");
+  const changed = prevK ? [[k.fx !== prevK.fx, k.s !== prevK.s, k.cx !== prevK.cx],
+                           [false, k.fy !== prevK.fy, k.cy !== prevK.cy],
+                           [false, false, false]] : [[0,0,0],[0,0,0],[0,0,0]];
+  body.innerHTML = rows.map((r, i) => "<tr>" + r.map((v, j) => {
+    const zero = (i === 1 && j === 0) || (i === 2 && j < 2);
+    const one = i === 2 && j === 2;
+    const txt = zero ? "0" : one ? "1" : v.toFixed(v === Math.round(v) && Math.abs(v) >= 100 ? 1 : 2);
+    return `<td class="${zero || one ? "z" : changed[i][j] ? "hot" : ""}">${txt}</td>`;
+  }).join("") + "</tr>").join("");
+  prevK = { ...k };
+
+  const dv = [S.k1, S.k2, S.p1, S.p2, S.k3];
+  document.getElementById("dvec").textContent =
+    `[${dv[0].toFixed(3)}  ${dv[1].toFixed(3)}  ${dv[2].toFixed(4)}  ${dv[3].toFixed(4)}  ${dv[4].toFixed(3)}]`;
+  const [hf, vf, df] = fovDeg(k, CAM_W, CAM_H);
+  document.getElementById("fov").textContent =
+    `${hf.toFixed(1)}° h · ${vf.toFixed(1)}° v · ${df.toFixed(1)}° d`;
+  document.getElementById("poff").textContent =
+    `${(k.cx - CAM_W/2 >= 0 ? "+" : "")}${(k.cx - CAM_W/2).toFixed(1)}, ` +
+    `${(k.cy - CAM_H/2 >= 0 ? "+" : "")}${(k.cy - CAM_H/2).toFixed(1)} px`;
+
+  const ok = isInvertibleOverImage(k, dv, CAM_W, CAM_H);
+  const chip = document.getElementById("valid");
+  chip.className = "chip " + (ok ? "ok" : "bad");
+  chip.lastElementChild.textContent = ok ? "invertible" : `folds past r′ ${maxDistortedRadius(dv).toFixed(2)}`;
+  document.getElementById("cap-cam").textContent =
+    `${CAM_W} × ${CAM_H} · distortion ${document.getElementById("use-d").checked ? "on" : "off"}`;
+}
+
+/* ===========================================================================
+   Wiring
+   =========================================================================== */
+buildSliders(document.getElementById("g-k"),     SLIDERS.k);
+buildSliders(document.getElementById("g-d"),     SLIDERS.d);
+buildSliders(document.getElementById("g-cam"),   SLIDERS.cam);
+buildSliders(document.getElementById("g-obs"),   SLIDERS.obs);
+buildSliders(document.getElementById("g-alpha"), SLIDERS.alpha);
+
+const presetSel = document.getElementById("preset");
+for (const name of Object.keys(PRESETS)) presetSel.add(new Option(name, name));
+presetSel.value = "webcam (mild barrel)";
+
+function applyPreset(name) {
+  const p = PRESETS[name];
+  if (!p) return;
+  setParam("fx", p.f * CAM_W); setParam("fy", p.f * CAM_W);
+  for (const key of ["k1", "k2", "p1", "p2", "k3"]) setParam(key, p[key]);
+}
+presetSel.addEventListener("change", () => applyPreset(presetSel.value));
+
+document.getElementById("show-skew").addEventListener("change", (e) => {
+  inputs.skew.row.hidden = !e.target.checked;
+  if (!e.target.checked) setParam("skew", 0);
+  invalidate();
+});
+document.getElementById("lock-f").addEventListener("change", (e) => {
+  if (e.target.checked) setParam("fy", S.fx);
+});
+for (const id of ["use-d", "show-grid", "show-frustum"])
+  document.getElementById(id).addEventListener("change", invalidate);
+
+document.getElementById("reset").addEventListener("click", () => {
+  for (const g of Object.values(SLIDERS)) for (const d of g) setParam(d.id, d.def);
+  presetSel.value = "ideal pinhole";
+  applyPreset("ideal pinhole");
+});
+
+document.getElementById("copy").addEventListener("click", async (e) => {
+  const k = K(), text =
+`# learn_camera_intrinsics
+image_width: ${CAM_W}
+image_height: ${CAM_H}
+camera_matrix: [${k.fx.toFixed(4)}, ${k.s.toFixed(4)}, ${k.cx.toFixed(4)},
+                0.0, ${k.fy.toFixed(4)}, ${k.cy.toFixed(4)},
+                0.0, 0.0, 1.0]
+distortion_coefficients: [${S.k1.toFixed(6)}, ${S.k2.toFixed(6)}, ${S.p1.toFixed(6)}, ${S.p2.toFixed(6)}, ${S.k3.toFixed(6)}]`;
+  const btn = e.currentTarget;
+  if (btn.dataset.label === undefined) btn.dataset.label = btn.textContent;
+  clearTimeout(btn._restore);
+  let ok = false;
+  try { await navigator.clipboard.writeText(text); ok = true; }
+  catch { 
+    const ta = document.createElement("textarea");
+    ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.appendChild(ta); ta.select();
+    try { ok = document.execCommand("copy"); } catch { ok = false; }
+    ta.remove();
+  }
+  btn.textContent = ok ? "Copied" : "Press ⌘/Ctrl+C";
+  btn._restore = setTimeout(() => { btn.textContent = btn.dataset.label; }, 1400);
+});
+
+/* --- collapsible rail groups -------------------------------------------- */
+const GROUP_KEY = "intrinsics-bench.groups";
+let groupState = {};
+try { groupState = JSON.parse(localStorage.getItem(GROUP_KEY)) || {}; } catch { }
+for (const g of document.querySelectorAll(".group")) {
+  if (groupState[g.id] !== undefined) setGroup(g, groupState[g.id]);
+  g.querySelector(".ghead").addEventListener("click", () => {
+    setGroup(g, g.dataset.open !== "1");
+    groupState[g.id] = g.dataset.open === "1";
+    try { localStorage.setItem(GROUP_KEY, JSON.stringify(groupState)); } catch { }
+  });
+}
+function setGroup(g, open) {
+  g.dataset.open = open ? "1" : "0";
+  g.querySelector(".ghead").setAttribute("aria-expanded", String(!!open));
+}
+
+/* --- tabs --------------------------------------------------------------- */
+function setTab(next) {
+  tab = next;
+  for (const id of ["3d", "2d"])
+    document.getElementById("tab-" + id).setAttribute("aria-selected", String(id === next));
+  document.getElementById("panes-3d").hidden = next !== "3d";
+  document.getElementById("panes-2d").hidden = next !== "2d";
+  document.getElementById("grp-view").hidden = next !== "3d";
+  document.getElementById("grp-obs").hidden  = next !== "3d";
+  document.getElementById("grp-chart").hidden = next !== "2d";
+  document.getElementById("grp-display").hidden = next !== "3d";
+  for (const id of ["show-grid", "show-frustum"])
+    document.getElementById(id).closest(".tg").hidden = next !== "3d";
+  invalidate();
+}
+document.getElementById("tab-3d").addEventListener("click", () => { setTab("3d"); location.hash = "3d"; });
+document.getElementById("tab-2d").addEventListener("click", () => { setTab("2d"); location.hash = "2d"; });
+
+document.getElementById("chart-seg").addEventListener("click", (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  chart = b.dataset.chart;
+  for (const x of e.currentTarget.children) x.setAttribute("aria-pressed", String(x === b));
+  invalidate();
+});
+
+/* --- drag to orbit ------------------------------------------------------ */
+function draggable(canvas, yawId, pitchId, distId, invert = 1) {
+  let last = null;
+  canvas.addEventListener("pointerdown", (e) => {
+    last = [e.clientX, e.clientY];
+    canvas.setPointerCapture(e.pointerId);
+  });
+  canvas.addEventListener("pointermove", (e) => {
+    if (!last) return;
+    const dx = e.clientX - last[0], dy = e.clientY - last[1];
+    last = [e.clientX, e.clientY];
+    setParam(yawId, S[yawId] - invert * dx * 0.4);
+    setParam(pitchId, S[pitchId] + invert * dy * 0.3);
+  });
+  const stop = (e) => { last = null; try { canvas.releasePointerCapture(e.pointerId); } catch {} };
+  canvas.addEventListener("pointerup", stop);
+  canvas.addEventListener("pointercancel", stop);
+  canvas.addEventListener("wheel", (e) => {
+    e.preventDefault();
+    setParam(distId, S[distId] * (1 + Math.sign(e.deltaY) * 0.08));
+  }, { passive: false });
+}
+draggable(document.getElementById("cv-world"), "obsYaw", "obsPitch", "obsDist");
+draggable(document.getElementById("cv-cam"),   "camYaw", "camPitch", "camDist");
+
+/* --- keyboard ----------------------------------------------------------- */
+document.addEventListener("keydown", (e) => {
+  if (e.target.matches("input, select, textarea")) return;
+  if (e.ctrlKey || e.metaKey || e.altKey) return;   // leave browser shortcuts alone
+  const map = { d: "use-d", g: "show-grid", f: "show-frustum" };
+  if (map[e.key]) {
+    const el = document.getElementById(map[e.key]);
+    el.checked = !el.checked; invalidate(); e.preventDefault();
+  } else if (e.key === "1") setTab("3d");
+  else if (e.key === "2") setTab("2d");
+  else if (e.key === "r") document.getElementById("reset").click();
+});
+
+/* --- theme -------------------------------------------------------------- */
+document.getElementById("theme").addEventListener("click", () => {
+  const cur = document.documentElement.getAttribute("data-theme");
+  const sysDark = matchMedia("(prefers-color-scheme: dark)").matches;
+  const now = cur || (sysDark ? "dark" : "light");
+  document.documentElement.setAttribute("data-theme", now === "dark" ? "light" : "dark");
+});
+
+/* --- go ----------------------------------------------------------------- */
+new ResizeObserver(() => invalidate()).observe(document.getElementById("stage"));
+window.addEventListener("resize", invalidate);
+applyPreset(presetSel.value);
+setTab(location.hash.replace("#", "") === "2d" ? "2d" : "3d");
+draw();
+</script>
+</body>
+</html>

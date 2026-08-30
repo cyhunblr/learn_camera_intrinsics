@@ -1,0 +1,8 @@
+#!/usr/bin/env sh
+# Run the same commit-message check CI runs, if node is available.
+#
+# Enable with:  git config core.hooksPath .githooks
+# Skips silently without node, so it never blocks a commit it cannot check.
+command -v npx >/dev/null 2>&1 || exit 0
+npx --yes --package @commitlint/cli --package @commitlint/config-conventional \
+    -- commitlint --edit "$1"

@@ -1,0 +1,165 @@
+{
+  "title": "learn_camera_intrinsics quiz",
+  "questions": [
+    {"id": 1, "topic": "pinhole", "type": "mc",
+     "q": "A camera sees a point at (X, Y, Z) = (1, 0, 4) m. Another point sits at (2, 0, 8) m. Where do they land?",
+     "options": ["On the same pixel", "Two pixels, one twice as far from the centre", "Two pixels on opposite sides of the centre", "The second one is not visible"],
+     "answer": 0,
+     "explain": "Both have x = X/Z = 0.25, so both project to the same normalized coordinate and therefore the same pixel. A single camera measures direction, never distance."},
+
+    {"id": 2, "topic": "pinhole", "type": "num",
+     "q": "fx = 800 px, cx = 640 px, no distortion. A point at (1.0, 0.0, 4.0) m projects to which u (in pixels)?",
+     "answer": 840.0, "tol": 0.5,
+     "explain": "x = X/Z = 0.25, then u = fx*x + cx = 800*0.25 + 640 = 840."},
+
+    {"id": 3, "topic": "K", "type": "num",
+     "q": "A 1280-px-wide image has fx = 800 and cx = 640. What is the horizontal field of view, in degrees?",
+     "answer": 77.32, "tol": 0.3,
+     "explain": "hFOV = 2*atan((W/2)/fx) = 2*atan(640/800) = 77.32 deg, because cx sits exactly at the centre here."},
+
+    {"id": 4, "topic": "K", "type": "mc",
+     "q": "What are the units of fx?",
+     "options": ["Millimetres", "Pixels", "Metres", "It is dimensionless"],
+     "answer": 1,
+     "explain": "fx = F / pixel_width, where F is the physical focal length. The millimetres cancel and you are left with pixels -- which is why fx changes when you resize the image even though the lens does not."},
+
+    {"id": 5, "topic": "K", "type": "mc",
+     "q": "You increase cx by 50 px and change nothing else. What happened to the camera?",
+     "options": ["It rotated slightly to the left", "It rotated slightly to the right", "Nothing physical: the image just shifts on the sensor grid", "Its focal length changed"],
+     "answer": 2,
+     "explain": "K contains no rotation. Moving cx slides where the optical axis is recorded to land. A real rotation would change what is visible at the frame edges; a cx shift only relabels coordinates."},
+
+    {"id": 6, "topic": "K", "type": "mc",
+     "q": "Your calibration returns fx = 1450 and fy = 1180 for a normal machine-vision camera. Most likely explanation?",
+     "options": ["The pixels really are that non-square", "The image was stretched or resized non-uniformly before calibration", "Strong barrel distortion", "The board was held too close"],
+     "answer": 1,
+     "explain": "Modern sensors have square pixels to within about 1%. An fx/fy ratio of 1.23 almost always means the frames were resized without preserving the aspect ratio."},
+
+    {"id": 7, "topic": "K", "type": "num",
+     "q": "fx = 1000 px and the sensor's pixel pitch is 3.0 um. What is the physical focal length in millimetres?",
+     "answer": 3.0, "tol": 0.05,
+     "explain": "F = fx*pixel_pitch = 1000*3.0 um = 3000 um = 3.0 mm. This is the sanity check that catches a badly wrong calibration in five seconds."},
+
+    {"id": 8, "topic": "K", "type": "num",
+     "q": "You want a centred K for a 1920-px-wide image with a 90 degree horizontal field of view. What is fx?",
+     "answer": 960.0, "tol": 1.0,
+     "explain": "fx = (W/2) / tan(hFOV/2) = 960 / tan(45 deg) = 960. A 90 deg FOV always gives fx = W/2 exactly."},
+
+    {"id": 9, "topic": "K", "type": "mc",
+     "q": "What does the skew term K[0,1] represent, and what should it be?",
+     "options": ["Lens tilt; typically 1e-3", "Shear between the sensor axes; 0 for any digital sensor", "Rolling-shutter delay; depends on the sensor", "Radial distortion of first order; usually negative"],
+     "answer": 1,
+     "explain": "Skew models sensor axes that are not perpendicular -- an artefact of old film digitisers. It is 0 in practice, and cv2.projectPoints ignores K[0,1] entirely."},
+
+    {"id": 10, "topic": "D", "type": "mc",
+     "q": "In OpenCV, what is the order of the distortion vector?",
+     "options": ["[k1, k2, k3, p1, p2]", "[k1, k2, p1, p2, k3]", "[p1, p2, k1, k2, k3]", "[k1, p1, k2, p2, k3]"],
+     "answer": 1,
+     "explain": "The two tangential terms sit between k2 and k3: [k1, k2, p1, p2, k3]. Getting this wrong is the single most common camera-calibration bug, and it produces a plausible-looking but wrong undistortion."},
+
+    {"id": 11, "topic": "D", "type": "mc",
+     "q": "A straight wall edge bows outward, away from the image centre. What is the sign of k1?",
+     "options": ["Negative (barrel)", "Positive (pincushion)", "Zero", "Cannot tell without k2"],
+     "answer": 0,
+     "explain": "Barrel distortion pulls points toward the centre (r' < r), which makes straight lines bow outward. That needs k1 < 0."},
+
+    {"id": 12, "topic": "D", "type": "num",
+     "q": "k1 = -0.20, all other coefficients zero. What is r' at r = 0.5?",
+     "answer": 0.475, "tol": 0.002,
+     "explain": "r' = r*(1 + k1*r^2) = 0.5*(1 - 0.20*0.25) = 0.5*0.95 = 0.475. Barrel, as expected from k1 < 0."},
+
+    {"id": 13, "topic": "D", "type": "mc",
+     "q": "Where in the pipeline is distortion applied?",
+     "options": ["To the 3D point, before the perspective divide", "After the perspective divide, before K", "After K, in pixel coordinates", "It does not matter, the operations commute"],
+     "answer": 1,
+     "explain": "3D -> divide -> distort -> K. This is why D is unitless and completely independent of image resolution, and why the operations do not commute."},
+
+    {"id": 14, "topic": "D", "type": "mc",
+     "q": "Your calibration returns p1 = 0.031 and p2 = -0.024 for an ordinary lens. What should you conclude?",
+     "options": ["The lens is badly decentred, which is normal", "The fit is absorbing noise; the calibration is not trustworthy", "The board was too small", "Nothing, those are typical values"],
+     "answer": 1,
+     "explain": "Real tangential coefficients live around 1e-4 to 1e-3. Values near 0.03 mean the optimiser used the tangential terms to soak up noise or a systematic error such as a mis-measured square size."},
+
+    {"id": 15, "topic": "D", "type": "mc",
+     "q": "A lens is barrel-shaped near the centre and pincushion-shaped at the edge. What do you need?",
+     "options": ["A larger k1", "k1 and k2 with opposite signs", "Tangential terms p1 and p2", "The fisheye model"],
+     "answer": 1,
+     "explain": "This is 'moustache' distortion. One k1 can only bend the curve one way; k1 < 0 with k2 > 0 lets r'(r) dip below the diagonal and then climb above it."},
+
+    {"id": 16, "topic": "D", "type": "mc",
+     "q": "You resize a calibrated image from 1920x1080 to 960x540. What happens to D?",
+     "options": ["Every coefficient halves", "k1 halves, k2 quarters", "Nothing -- D is unchanged", "Only the tangential terms change"],
+     "answer": 2,
+     "explain": "D acts in normalized coordinates, before K. Resolution never enters. Only K changes on a resize."},
+
+    {"id": 17, "topic": "resize", "type": "num",
+     "q": "fx = 1450 at 1920x1080. You resize to 960x540. What is the new fx?",
+     "answer": 725.0, "tol": 1.0,
+     "explain": "Uniform scale by 0.5, so fx, fy, cx and cy all halve: 1450 * 0.5 = 725."},
+
+    {"id": 18, "topic": "resize", "type": "num",
+     "q": "cx = 962.4. You crop 200 px off the left edge and 100 off the top. What is the new cx?",
+     "answer": 762.4, "tol": 0.5,
+     "explain": "Cropping moves the origin: cx_new = cx - x0 = 962.4 - 200 = 762.4. fx and fy are untouched -- the lens did not change."},
+
+    {"id": 19, "topic": "resize", "type": "mc",
+     "q": "A preprocessing step crops the frame and then resizes the crop. In what order do you transform K?",
+     "options": ["Scale first, then shift the principal point", "Shift the principal point first, then scale", "Order does not matter", "Only the scale matters"],
+     "answer": 1,
+     "explain": "Apply the operations to K in the same order the pixels meet them: crop (shift cx, cy) and then resize (scale the whole first two rows, including the already-shifted cx and cy)."},
+
+    {"id": 20, "topic": "resize", "type": "mc",
+     "q": "You mirror images horizontally as data augmentation. Besides cx, what else in the camera model must change?",
+     "options": ["Nothing else", "fx becomes negative", "The sign of p2 flips", "k1 and k2 flip sign"],
+     "answer": 2,
+     "explain": "The radial terms are even functions and survive a mirror untouched. The tangential ones are not: substituting x -> -x shows the mirrored lens needs p2 -> -p2 (and p1 -> -p1 for a vertical flip)."},
+
+    {"id": 21, "topic": "undistort", "type": "mc",
+     "q": "You undistort an image with cv2.undistort and a new camera matrix. Which intrinsics describe the result?",
+     "options": ["The original K and D", "The original K with D = 0", "K_new with D = 0", "K_new with the original D"],
+     "answer": 2,
+     "explain": "Undistorting produces a different camera: K_new from getOptimalNewCameraMatrix, and a distortion vector of all zeros. Reusing the original K on an undistorted image is a classic silent bug."},
+
+    {"id": 22, "topic": "undistort", "type": "mc",
+     "q": "What does alpha = 1 in getOptimalNewCameraMatrix give you?",
+     "options": ["Every source pixel is kept, with black curved borders", "The image is cropped so no black pixel remains", "Distortion is applied twice", "The original K unchanged"],
+     "answer": 0,
+     "explain": "alpha = 1 takes the bounding rectangle of the undistorted image outline, so all input pixels survive but the frame gains invalid regions. alpha = 0 inscribes instead, cropping until every output pixel is real."},
+
+    {"id": 23, "topic": "undistort", "type": "mc",
+     "q": "For a barrel lens, which way does fx_new move when you undistort?",
+     "options": ["It rises, and the field of view shrinks", "It drops, and the field of view grows", "It is unchanged", "It depends only on alpha"],
+     "answer": 1,
+     "explain": "Barrel distortion squeezes the periphery, so undistorting spreads it back out: the undistorted image covers a wider angle, and fx_new drops. Pincushion does the opposite. Alpha only decides how much of the result you keep."},
+
+    {"id": 24, "topic": "undistort", "type": "mc",
+     "q": "When can a distorted point NOT be undistorted at all?",
+     "options": ["Never; the model is always invertible", "When its radius is past the point where r'(r) stops increasing", "When k3 is zero", "Only for fisheye lenses"],
+     "answer": 1,
+     "explain": "Beyond the fold point the radial curve is no longer monotonic, so no r maps to that r'. OpenCV does not warn you -- it returns garbage, which is where the smeared 'petals' at the edge of an over-distorted undistort come from."},
+
+    {"id": 25, "topic": "calibration", "type": "mc",
+     "q": "Your calibration reports RMS reprojection error of 0.18 px. What does that prove?",
+     "options": ["The intrinsics are accurate to a fraction of a pixel", "The model fits the data you supplied, and nothing more", "The board size was measured correctly", "The lens has negligible distortion"],
+     "answer": 1,
+     "explain": "Reprojection error only measures fit quality. If every board was held flat at the same distance, focal length and depth trade off almost perfectly: the optimiser can be 17% wrong on fx and still report an excellent RMS."},
+
+    {"id": 26, "topic": "calibration", "type": "mc",
+     "q": "Which single habit most improves a checkerboard calibration?",
+     "options": ["Taking 100 photos instead of 20", "Tilting the board 30-45 degrees in several directions and varying distance", "Holding the board perfectly flat and parallel to the sensor", "Using the largest possible board"],
+     "answer": 1,
+     "explain": "Pose diversity is what breaks the focal-length/depth degeneracy. Fifteen well-varied views beat sixty flat ones, and the flat set will not warn you that it failed."},
+
+    {"id": 27, "topic": "calibration", "type": "mc",
+     "q": "Why is CALIB_FIX_K3 often a good idea on a normal lens?",
+     "options": ["It makes the reprojection error much smaller", "k3 is nearly unconstrained by typical data and its noise leaks into k1", "k3 is not supported by cv2.undistort", "It speeds up the optimisation significantly"],
+     "answer": 1,
+     "explain": "Fixing k3 barely changes the RMS. What it changes is stability: a free k3 scatters wildly across repeat calibrations and drags k1 with it. Add k3 only when the lens is wide enough to need it."},
+
+    {"id": 28, "topic": "calibration", "type": "mc",
+     "q": "You calibrate at 1920x1080 but your detector runs on 640x640 letterboxed input. What must you do?",
+     "options": ["Nothing; K is resolution independent", "Recalibrate at 640x640", "Scale K, then shift cx and cy by the letterbox padding", "Only scale fx and fy"],
+     "answer": 2,
+     "explain": "A letterbox is 'resize, then pad'. Apply scale_K first, then treat the padding as a crop with negative offsets. D stays exactly as it was."}
+  ]
+}
